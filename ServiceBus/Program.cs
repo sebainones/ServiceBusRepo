@@ -9,45 +9,80 @@ namespace ServiceBus
 {
     class Program
     {
-        private static string ServiceBusConnectionString;
-        private static string QueueName;
-        static IQueueClient queueClient;
+        static IQueueClient queueClient; //To send messages to a QUEUE
+        static ITopicClient topicClient;  //To send messages to a Topic
+        static ISubscriptionClient subscriptionClient; //To receive messages from a Subcription to a Topic
+
+
+        //However, you'll use the TopicClient class instead of the QueueClient class to send messages and the SubscriptionClient class to receive messages.
 
         public static async Task Main(string[] args)
         {
             try
             {
-                IConfigurationBuilder configBuilder = new ConfigurationBuilder().AddJsonFile("localsettings.json");
-                IConfigurationRoot config = configBuilder.Build();
 
-                ServiceBusConnectionString = config["ServiceBusConnectionString"];
-                QueueName = config["QueueName"];
+                queueClient = QueueHandler.CreateQueClient(Configuration.ServiceBusConnectionString, Configuration.QueueName);
 
-                const int numberOfMessages = 10;
+                topicClient = TopicHandler.CreatTopicClient(Configuration.ServiceBusConnectionString, Configuration.TopicName);
 
-                queueClient = new QueueClient(ServiceBusConnectionString, QueueName);
-
-                // Register QueueClient's MessageHandler and receive messages in a loop
+                // Register QueueClient's MessageHandler and receive messages.
                 RegisterOnMessageHandlerAndReceiveMessages();
 
+                //To receive messages, you must create a SubscriptionClient object, NOT  a TopicClient object
+                SubscribeToReeiveTopicMessages();
+
                 // Send messages.
-                await SendMessagesAsync(numberOfMessages);
+                await SendQueueMessagesAsync();
 
-                Console.WriteLine("Now, we will check some incoming messages");
+                Thread.Sleep(3000);
 
+                // Send messages.
+                await SendTopicMessagesAsync();
 
-                Thread.Sleep(5000);
-                Console.WriteLine("Now... closing QUEUE");
-                await queueClient.CloseAsync();
+                Thread.Sleep(3000);
+                Console.ReadKey();
+
             }
             catch (Exception e)
             {
                 Console.WriteLine(e.Message);
             }
+            finally
+            {
+                Console.WriteLine("Now... closing QUEUE");
+                await queueClient.CloseAsync();
+                Console.WriteLine("Now... closing Topics");
+                await topicClient.CloseAsync();
+
+            }
 
         }
 
-        static void RegisterOnMessageHandlerAndReceiveMessages()
+        private static void SubscribeToReeiveTopicMessages()
+        {
+            subscriptionClient = new SubscriptionClient(Configuration.ServiceBusConnectionString, Configuration.TopicName, Configuration.SubscriptionName);
+
+            //TODO: learn how to properly add FILTERS!!!
+            //subscriptionClient.AddRuleAsync(new RuleDescription { Filter = new SqlFilter("From LIKE '%Smith'") });
+
+            // Configure the message handler options in terms of exception handling, number of concurrent messages to deliver, etc.
+            var messageHandlerOptions = new MessageHandlerOptions(ExceptionReceivedHandler)
+            {
+                // Maximum number of concurrent calls to the callback ProcessMessagesAsync(), set to 1 for simplicity.
+                // Set it according to how many messages the application wants to process in parallel.
+                MaxConcurrentCalls = 1,
+
+                // Indicates whether MessagePump should automatically complete the messages after returning from User Callback.
+                // False below indicates the Complete will be handled by the User Callback as in `ProcessMessagesAsync` below.
+                AutoComplete = false
+            };
+
+            // Register the function that processes messages.
+
+            subscriptionClient.RegisterMessageHandler(ProcessTopicMessagesAsync, messageHandlerOptions);
+        }
+
+        private static void RegisterOnMessageHandlerAndReceiveMessages()
         {
             // Configure the message handler options in terms of exception handling, number of concurrent messages to deliver, etc.
             var messageHandlerOptions = new MessageHandlerOptions(ExceptionReceivedHandler)
@@ -65,7 +100,7 @@ namespace ServiceBus
             queueClient.RegisterMessageHandler(ProcessMessagesAsync, messageHandlerOptions);
         }
 
-        static async Task ProcessMessagesAsync(Message message, CancellationToken token)
+        private static async Task ProcessMessagesAsync(Message message, CancellationToken token)
         {
             // Process the message.
             Console.WriteLine($"Received message: SequenceNumber:{message.SystemProperties.SequenceNumber} Body:{Encoding.UTF8.GetString(message.Body)}");
@@ -73,6 +108,20 @@ namespace ServiceBus
             // Complete the message so that it is not received again.
             // This can be done only if the queue Client is created in ReceiveMode.PeekLock mode (which is the default).
             await queueClient.CompleteAsync(message.SystemProperties.LockToken);
+
+            // Note: Use the cancellationToken passed as necessary to determine if the queueClient has already been closed.
+            // If queueClient has already been closed, you can choose to not call CompleteAsync() or AbandonAsync() etc.
+            // to avoid unnecessary exceptions.
+        }
+
+        private static async Task ProcessTopicMessagesAsync(Message message, CancellationToken token)
+        {
+            // Process the message.
+            Console.WriteLine($"Received message: SequenceNumber:{message.SystemProperties.SequenceNumber} Body:{Encoding.UTF8.GetString(message.Body)}");
+
+            // Complete the message so that it is not received again.
+            // This can be done only if the queue Client is created in ReceiveMode.PeekLock mode (which is the default).
+            await subscriptionClient.CompleteAsync(message.SystemProperties.LockToken);
 
             // Note: Use the cancellationToken passed as necessary to determine if the queueClient has already been closed.
             // If queueClient has already been closed, you can choose to not call CompleteAsync() or AbandonAsync() etc.
@@ -91,21 +140,47 @@ namespace ServiceBus
             return Task.CompletedTask;
         }
 
-        private static async Task SendMessagesAsync(int numberOfMessages)
+        private static async Task SendTopicMessagesAsync()
         {
+            const int numberOfMessagesToSend = 4;
+            try
+            {
+                for (var i = 0; i < numberOfMessagesToSend; i++)
+                {
+                    // Create a new message to send to the topic.
+                    string messageBody = $"TOPIC Message {i}";
+                    var encodedMessage = new Message(Encoding.UTF8.GetBytes(messageBody));
+
+                    // Write the body of the message to the console.
+                    Console.WriteLine($"Sending TOPIC message: {messageBody}");
+
+                    // Send the message to the topic.
+                    await topicClient.SendAsync(encodedMessage);
+                }
+            }
+            catch (Exception exception)
+            {
+                Console.WriteLine($"{DateTime.Now} :: Exception: {exception.Message}");
+            }
+        }
+
+        private static async Task SendQueueMessagesAsync()
+        {
+            const int numberOfMessages = 10;
+
             try
             {
                 for (var i = 0; i < numberOfMessages; i++)
                 {
                     // Create a new message to send to the queue.
-                    string messageBody = $"Message number {i}";
-                    var message = new Message(Encoding.UTF8.GetBytes(messageBody));
+                    string messageBody = $"QUEUE Message number {i}";
+                    var encodedMessage = new Message(Encoding.UTF8.GetBytes(messageBody));
 
                     // Write the body of the message to the console.
                     Console.WriteLine($"Sending message: {messageBody}");
 
                     // Send the message to the queue.
-                    await queueClient.SendAsync(message);
+                    await queueClient.SendAsync(encodedMessage);
                 }
             }
             catch (Exception exception)
