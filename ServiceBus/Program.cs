@@ -17,7 +17,7 @@ namespace ServiceBus
         {
             try
             {
-                IConfigurationBuilder configBuilder = new ConfigurationBuilder().AddJsonFile("appsettings.json");
+                IConfigurationBuilder configBuilder = new ConfigurationBuilder().AddJsonFile("localsettings.json");
                 IConfigurationRoot config = configBuilder.Build();
 
                 ServiceBusConnectionString = config["ServiceBusConnectionString"];
