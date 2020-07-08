@@ -2,8 +2,8 @@
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Azure.KeyVault;
 using Microsoft.Azure.ServiceBus;
-using Microsoft.Extensions.Configuration;
 
 namespace ServiceBus
 {
@@ -20,16 +20,20 @@ namespace ServiceBus
         {
             try
             {
+                //Create a Key Vault Client to get access get token (App Token) and then get the secret value
+                var kv = new KeyVaultClient((new KeyVaultClient.AuthenticationCallback(ActiveDirectoryService.GetToken)));
+                var serviceBusSecretConnectionString = kv.GetSecretAsync(Configuration.SecretUri).Result;
 
-                queueClient = QueueHandler.CreateQueClient(Configuration.ServiceBusConnectionString, Configuration.QueueName);
+                //Now we use the service bus Connection String comming from Key Vault!
+                queueClient = QueueHandler.CreateQueClient(serviceBusSecretConnectionString.Value, Configuration.QueueName);
 
-                topicClient = TopicHandler.CreatTopicClient(Configuration.ServiceBusConnectionString, Configuration.TopicName);
+                topicClient = TopicHandler.CreatTopicClient(serviceBusSecretConnectionString.Value, Configuration.TopicName);
 
                 // Register QueueClient's MessageHandler and receive messages.
                 RegisterOnMessageHandlerAndReceiveMessages();
 
                 //To receive messages, you must create a SubscriptionClient object, NOT  a TopicClient object
-                SubscribeToReeiveTopicMessages();
+                SubscribeToReeiveTopicMessages(serviceBusSecretConnectionString.Value);
 
                 // Send messages.
                 await SendQueueMessagesAsync();
@@ -55,12 +59,11 @@ namespace ServiceBus
                 await topicClient.CloseAsync();
 
             }
-
         }
 
-        private static void SubscribeToReeiveTopicMessages()
+        private static void SubscribeToReeiveTopicMessages(string serviceBusConnectionString)
         {
-            subscriptionClient = new SubscriptionClient(Configuration.ServiceBusConnectionString, Configuration.TopicName, Configuration.SubscriptionName);
+            subscriptionClient = new SubscriptionClient(serviceBusConnectionString, Configuration.TopicName, Configuration.SubscriptionName);
 
             //TODO: learn how to properly add FILTERS!!!
             //subscriptionClient.AddRuleAsync(new RuleDescription { Filter = new SqlFilter("From LIKE '%Smith'") });
