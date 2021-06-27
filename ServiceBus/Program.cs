@@ -10,38 +10,25 @@ namespace ServiceBus
     class Program
     {
         static IQueueClient queueClient; //To send messages to a QUEUE
-        static ITopicClient topicClient;  //To send messages to a Topic
-        static ISubscriptionClient subscriptionClient; //To receive messages from a Subcription to a Topic
-
-
-        //However, you'll use the TopicClient class instead of the QueueClient class to send messages and the SubscriptionClient class to receive messages.
 
         public static async Task Main(string[] args)
         {
             try
             {
-                //Create a Key Vault Client to get access get token (App Token) and then get the secret value
-                var kv = new KeyVaultClient((new KeyVaultClient.AuthenticationCallback(ActiveDirectoryService.GetToken)));
-                var serviceBusSecretConnectionString = kv.GetSecretAsync(Configuration.SecretUri).Result;
 
-                //Now we use the service bus Connection String comming from Key Vault!
-                queueClient = QueueHandler.CreateQueClient(serviceBusSecretConnectionString.Value, Configuration.QueueName);
+                //Now we us
+                queueClient = QueueHandler.CreateQueClient(Configuration.ServiceBusConnectionString, Configuration.QueueName);
 
-                topicClient = TopicHandler.CreatTopicClient(serviceBusSecretConnectionString.Value, Configuration.TopicName);
+                //topicClient = TopicHandler.CreatTopicClient(serviceBusSecretConnectionString.Value, Configuration.TopicName);
 
                 // Register QueueClient's MessageHandler and receive messages.
                 RegisterOnMessageHandlerAndReceiveMessages();
 
                 //To receive messages, you must create a SubscriptionClient object, NOT  a TopicClient object
-                SubscribeToReeiveTopicMessages(serviceBusSecretConnectionString.Value);
+                //SubscribeToReeiveTopicMessages(serviceBusSecretConnectionString.Value);
 
                 // Send messages.
                 await SendQueueMessagesAsync();
-
-                Thread.Sleep(3000);
-
-                // Send messages.
-                await SendTopicMessagesAsync();
 
                 Thread.Sleep(3000);
                 Console.ReadKey();
@@ -55,9 +42,6 @@ namespace ServiceBus
             {
                 Console.WriteLine("Now... closing QUEUE");
                 await queueClient.CloseAsync();
-                Console.WriteLine("Now... closing Topics");
-                await topicClient.CloseAsync();
-
             }
         }
 
@@ -117,19 +101,6 @@ namespace ServiceBus
             // to avoid unnecessary exceptions.
         }
 
-        private static async Task ProcessTopicMessagesAsync(Message message, CancellationToken token)
-        {
-            // Process the message.
-            Console.WriteLine($"Received message: SequenceNumber:{message.SystemProperties.SequenceNumber} Body:{Encoding.UTF8.GetString(message.Body)}");
-
-            // Complete the message so that it is not received again.
-            // This can be done only if the queue Client is created in ReceiveMode.PeekLock mode (which is the default).
-            await subscriptionClient.CompleteAsync(message.SystemProperties.LockToken);
-
-            // Note: Use the cancellationToken passed as necessary to determine if the queueClient has already been closed.
-            // If queueClient has already been closed, you can choose to not call CompleteAsync() or AbandonAsync() etc.
-            // to avoid unnecessary exceptions.
-        }
 
         // Use this handler to examine the exceptions received on the message pump.
         static Task ExceptionReceivedHandler(ExceptionReceivedEventArgs exceptionReceivedEventArgs)
@@ -141,30 +112,6 @@ namespace ServiceBus
             Console.WriteLine($"- Entity Path: {context.EntityPath}");
             Console.WriteLine($"- Executing Action: {context.Action}");
             return Task.CompletedTask;
-        }
-
-        private static async Task SendTopicMessagesAsync()
-        {
-            const int numberOfMessagesToSend = 4;
-            try
-            {
-                for (var i = 0; i < numberOfMessagesToSend; i++)
-                {
-                    // Create a new message to send to the topic.
-                    string messageBody = $"TOPIC Message {i}";
-                    var encodedMessage = new Message(Encoding.UTF8.GetBytes(messageBody));
-
-                    // Write the body of the message to the console.
-                    Console.WriteLine($"Sending TOPIC message: {messageBody}");
-
-                    // Send the message to the topic.
-                    await topicClient.SendAsync(encodedMessage);
-                }
-            }
-            catch (Exception exception)
-            {
-                Console.WriteLine($"{DateTime.Now} :: Exception: {exception.Message}");
-            }
         }
 
         private static async Task SendQueueMessagesAsync()

@@ -24,12 +24,14 @@ namespace ServiceBus
             IConfigurationRoot config = configBuilder.Build();
             ServiceBusConnectionString = config["ServiceBusConnectionString"];
             QueueName = config["QueueName"];
-            TopicName = config["TopicName"];
-            SubscriptionName = config["SubscriptionName"];
+            
+            
+            //TopicName = config["TopicName"];
+            //SubscriptionName = config["SubscriptionName"];
 
-            ClientId = config["ClientId"];
-            ClientSecret= config["ClientSecret"];
-            SecretUri = config["SecretUri"];
+            //ClientId = config["ClientId"];
+            //ClientSecret= config["ClientSecret"];
+            //SecretUri = config["SecretUri"];
         }
     }
 }
