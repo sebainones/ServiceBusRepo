@@ -1,12 +1,19 @@
-﻿using Microsoft.Azure.ServiceBus;
+﻿using Azure.Messaging.ServiceBus;
+using System;
 
 namespace ServiceBus
 {
     public static class QueueHandler
     {
-        public static IQueueClient CreateQueClient(string serviceBusConnectionString, string queueName)
+        // Create the clients that we'll use for sending and processing messages.
+        public static ServiceBusClient GetClient(string serviceBusConnectionString)
         {
-            return new QueueClient(serviceBusConnectionString, queueName);
+            return new ServiceBusClient(serviceBusConnectionString);
+        }
+
+        public static ServiceBusSender GetSender(ServiceBusClient client, string queueName)
+        {
+            return client.CreateSender(queueName);
         }
     }
 }
